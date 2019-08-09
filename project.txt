@@ -1,0 +1,188 @@
+-----------------Checkpoint 1-----------------------
+
+//Removing directory if it’s already existing.
+hdfs dfs -rmdir AadharDir
+
+//Creating new directory.
+hdfs dfs -mkdir AadharDir
+
+//Placing aadhar.csv file to the created directory.
+hdfs dfs -put aadhar.csv AadharDir
+
+//Displaying hdfs file.
+hdfs dfs -cat 'AadharDir/aadhar.csv’
+
+//Initializing hive.
+hive
+
+//Creating database if it is not present.
+create database if not exists AadharDB;
+
+//Using the created database.
+use AadharDB;
+set hive.cli.print.current.db = true;
+
+//Dropping table if it’s already present in the database.
+drop table if exists ManagedAadharTable;
+
+//Creating Managed Table.
+create table ManagedAadharTable(Registrar String, enrolmentAgency String, state String, district String, subDistrict String, pincode String, gender String, age int, aadharGenerated int, enrolmentRejected int, residentsProvidingEmail int , residentsProvidingMobileNo int) row format delimited fields terminated by "," stored as textfile TBLProperties('skip.header.line.count' ='1');
+
+//Loading data in the Managed Table.
+load data inpath '/user/cloudera/AadharDir/aadhar.csv' into table ManagedAadharTable;
+
+//Displaying 25 rows from managed table.
+select * from ManagedAadharTable limit 25;
+
+//Creating external table. 
+create external table ExternalAadharTable(Registrar String, enrolmentAgency String, state String, district String, subDistrict String, pincode String, gender String, age int, aadharGenerated int, enrolmentRejected int, residentsProvidingEmail int , residentsProvidingMobileNo int) row format delimited fields terminated by "," stored as textfile location '/user/cloudera/AadharDir/' TBLProperties('skip.header.line.count' ='1');
+
+//Displaying 25 rows from external table.
+select * from ExternalAadharTable limit 25;
+
+//Creating dataFrame.
+val RDD = sc.textFile("/user/cloudera/AadharDir/aadhar.csv");
+val first = RDD.first();
+val filterRDD = RDD.filter(w=> w!= first);
+val AadharRDD = filterRDD.map(x =>(x.split(",")(0), x.split(",")(1),x.split(",")(2),x.split(",")(3),x.split(",")(4),x.split(",")(5),x.split(",")(6),x.split(",")(7),x.split(",")(8),x.split(",")(9),x.split(",")(10),x.split(",")(11)));
+val AadharDF = AadharRDD.toDF("Registrar","enrolment_Agency","State","District","Sub_district","pincode","gender","age","Aadhar_generated","Enrolment_rejected","resident_email","resident_mobile_no");
+
+--------------------------------Checkpoint 2----------------------------------
+
+//Describe the schema.
+describe ManagedAadharTable;
+registrar           	string              	                    
+enrolmentagency     	string              	                    
+state               	string              	                    
+district            	string              	                    
+subdistrict         	string              	                    
+pincode             	string              	                    
+gender              	string              	                    
+age                 	int                 	                    
+aadhargenerated     	int                 	                    
+enrolmentrejected   	int                 	                    
+residentsprovidingemail	int                 	                    
+residentsprovidingmobileno	int                 	                    
+Time taken: 0.079 seconds, Fetched: 12 row(s)
+
+describe ExternalAadharTable;
+registrar           	string              	                    
+enrolmentagency     	string              	                    
+state               	string              	                    
+district            	string              	                    
+subdistrict         	string              	                    
+pincode             	string              	                    
+gender              	string              	                    
+age                 	int                 	                    
+aadhargenerated     	int                 	                    
+enrolmentrejected   	int                 	                    
+residentsprovidingemail	int                 	                    
+residentsprovidingmobileno	int                 	                    
+Time taken: 0.073 seconds, Fetched: 12 row(s)
+
+//Find the count and names of registrars in the table.
+select count(distinct(Registrar)) from ExternalAadharTable;
+60
+
+//Find the number of states, districts in each state and sub-districts in each district.
+select count(distinct(state)) from ExternalAadharTable;
+37
+select state, count(distinct(district)) from ExternalAadharTable group by state;
+select district, count(distinct(subdistrict)) from ExternalAadharTable group by state, district;
+
+//Find the number of males and females in each state from the table and display a suitable plot.
+select gender, sum(aadhargenerated + enrolmentrejected) from externalaadharTable where gender='M' or gender='F'  group by gender;
+F	262967
+M	481541
+
+//Find out the names of private agencies for each state.
+select state, enrolmentagency from externalaadhartable;
+
+---------------------------Checkpoint 3-------------------------------------
+
+//Find top 3 states generating most number of Aadhaar cards
+create table AadharGeneratedState(state String, totalaadhargenerated int) row format delimited fields terminated by ',';
+insert into table AadharGeneratedState select state, sum(aadhargenerated) from externalaadhartable group by state;
+select * from aadhargeneratedState order by totalaadhargenerated desc limit 3;
+
+Bihar	162607
+West Bengal	119901
+Uttar Pradesh	103767
+
+//Find top 3 private agencies generating the most number of Aadhar cards
+create table AadharGeneratedAgency(enrolmentAgency String, totalaadhargenerated int) row format delimited fields terminated by ',';
+insert into table AadharGeneratedState select enrolmentAgency, sum(aadhargenerated) from externalaadhartable group by enrolmentAgency;
+select * from aadhargeneratedAgency order by totalaadhargenerated desc limit 3;
+
+CSC SPV	173192
+Wipro Ltd	39619
+SREI INFRASTRUCTURE FINANCES L	26497
+
+//Find the number of residents providing email, mobile number
+select count(*) from externalaadhartable where residentsprovidingemail > 0 and residentsprovidingmobileno >0;
+
+16951
+
+//Find top 3 districts where enrolment numbers are maximum
+create table AadharGeneratedDistrict  as select district, sum(aadhargenerated) as totalaadhar from externalaadhartable group by district;
+select * from aadhargeneratedDistrict order by totalaadhar desc limit 3;
+
+South 24 Parganas	16207
+Barddhaman	15821
+Bhagalpur	14479
+
+//Find the no. of Aadhaar cards generated in each state
+select * from AadharGeneratedState;
+
+-----------------------------------checkpoint 4 ------------------------------------------------------
+//Create a data frame using the file and provide its summary
+val schema = AadharDF.schema;
+schema: org.apache.spark.sql.types.StructType = StructType(StructField(Registrar,StringType,true), StructField(enrolment_Agency,StringType,true), StructField(State,StringType,true), StructField(District,StringType,true), StructField(Sub_district,StringType,true), StructField(pincode,StringType,true), StructField(gender,StringType,true), StructField(age,StringType,true), StructField(Aadhar_generated,StringType,true), StructField(Enrolment_rejected,StringType,true), StructField(resident_email,StringType,true), StructField(resident_mobile_no,StringType,true))
+
+//Write a command to see the correlation between “age” and “mobile_number”
+select corr(age, residentsprovidingmobileno) from externalaadhartable;
+-0.11754461896889339
+
+//Find the number of unique pincodes in the data
+select distinct(pincode) from externalaadhartable;
+
+//Find the number of Aadhaar registrations rejected in Uttar Pradesh and Maharashtra
+select state , sum(enrolmentrejected) from externalaadhartable where state = 'Uttar Pradesh' or state ='Maharashtra' group by state;
+Maharashtra	1818
+Uttar Pradesh	5286
+
+-------------------------------------------checkpoint 5 -----------------------------------------------------
+//The top 3 states where the percentage of Aadhaar cards being generated for males is the highest
+Select state,round((sum(Aadhargenerated)/sum(Aadhargenerated+Enrolmentrejected))*100,2) Percentage_of_aadhar from externalAadharTable where gender like 'M' group by state order by Percentage_of_aadhar desc limit 3;
+Andaman and Nicobar Islands	100.0
+Others	100.0
+Lakshadweep	100.0
+
+//In each of these 3 states, identify the top 3 districts where the percentage of Aadhaar cards being rejected for females is the highest.
+Select state,district,round((sum(enrolmentrejected)/sum(aadhargenerated+enrolmentrejected))*100,2) Percentage_of_rejected from externalaadhartable where gender like 'F' and state like 'Andaman and Nicobar Islands' or state like 'Lakshadweep' or state like 'Others' group by state,district order by Percentage_of_rejected desc;
+Andaman and Nicobar Islands	South Andaman	50.0
+Andaman and Nicobar Islands	North And Middle Andaman	33.33
+Lakshadweep	Lakshadweep	20.0
+Others	Others	0.0
+
+//The top 3 states where the percentage of Aadhaar cards being generated for females is the highest.
+Select state,round((sum(aadhargenerated)/sum(aadhargenerated+enrolmentrejected))*100,2) Percentage_of_aadhar from externalaadhartable where gender like 'F' group by state order by Percentage_of_aadhar desc limit 3;
+Dadra and Nagar Haveli	100.0
+Sikkim	100.0
+Others	100.0
+
+//In each of these 3 states, identify the top 3 districts where the percentage of Aadhaar cards being rejected for males is the highest.
+Select state,district,round((sum(enrolmentrejected)/sum(aadhargenerated+enrolmentrejected))*100,2) Percentage_of_rejected from externalaadhartable where gender like 'M' and state like 'Dadra and Nagar Haveli' or state like 'Sikkim' or state like 'Others' group by state,district order by Percentage_of_rejected desc;
+Sikkim	East Sikkim	5.71
+Dadra and Nagar Haveli	Dadra and Nagar Haveli	3.45
+Sikkim	West Sikkim	0.0
+Sikkim	South Sikkim	0.0
+Sikkim	North Sikkim	0.0
+Others	Others	0.0
+
+//The summary of the acceptance percentage of all the Aadhaar cards applications by bucketing the age group into 10 buckets.
+
+create table  aadharbucket(registrar string,private_agency string,state string,district string,sub_district string,pincode string,gender string, age int,aadhar_generated int,rejected int,email_id int,moblie_number int) clustered by (age) into 10 buckets row format delimited fields terminated by ',' stored as textfile TBLPROPERTIES('serialization.null.format'='','skip.header.line.count'='1');
+Insert into aadharbucket select * from externalaadhartable;
+select round((sum(aadhar_generated)/sum(aadhar_generated+rejected))*100,2) from aadharbucket;
+
